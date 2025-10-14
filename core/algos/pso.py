@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
 import time
 import numpy as np
+
 from core.algos.base import BaseAlgo
-from core.metrics import penalized_objective
+from core.algos.utils import BinaryMetricHelper
+
 
 class BinaryPSOAlgo(BaseAlgo):
     name = "BinaryPSO"
@@ -12,39 +14,35 @@ class BinaryPSOAlgo(BaseAlgo):
             penalty=1000.0) -> "AlgoResult":
         t0 = time.perf_counter()
         rng = np.random.default_rng(seed)
-        m, n = D.shape
+        helper = BinaryMetricHelper(D, probs, costs)
+        n = helper.n
 
-        def fitness(x):
-            return penalized_objective(x, D, probs, costs, tau_d, tau_i, penalty)
-
-        # 初始化
-        X = (rng.random((pop_size, n)) < 0.5).astype(float)  # 0/1
+        X = (rng.random((pop_size, n)) < 0.5).astype(float)
         V = rng.normal(0, 1, size=(pop_size, n))
         P = X.copy()
-        Pfit = np.array([fitness(ind.astype(int)) for ind in P])
-        g_idx = np.argmin(Pfit)
+        Pfit = helper.penalized_objective(P.astype(np.uint8), tau_d, tau_i, penalty)
+        g_idx = int(np.argmin(Pfit))
         g = P[g_idx].copy()
-        gfit = Pfit[g_idx]
+        gfit = float(Pfit[g_idx])
 
-        for it in range(max_iter):
+        for _ in range(max_iter):
             r1 = rng.random((pop_size, n))
             r2 = rng.random((pop_size, n))
             V = w * V + c1 * r1 * (P - X) + c2 * r2 * (g - X)
-            # 二进制化：sigmoid 概率取1
             prob = 1.0 / (1.0 + np.exp(-V))
             X = (rng.random((pop_size, n)) < prob).astype(float)
 
-            # 评估
-            fvals = np.array([fitness(ind.astype(int)) for ind in X])
-            # 更新个体最优
-            mask = fvals < Pfit
-            P[mask] = X[mask]
-            Pfit[mask] = fvals[mask]
-            # 更新全局最优
-            idx = np.argmin(Pfit)
+            fvals = helper.penalized_objective(X.astype(np.uint8), tau_d, tau_i, penalty)
+            improved = fvals < Pfit
+            if np.any(improved):
+                P[improved] = X[improved]
+                Pfit[improved] = fvals[improved]
+
+            idx = int(np.argmin(Pfit))
             if Pfit[idx] < gfit:
-                gfit = Pfit[idx]
+                gfit = float(Pfit[idx])
                 g = P[idx].copy()
 
-        from core.algos.base import BaseAlgo
-        return BaseAlgo._wrap_result(self.name, g.astype(int), D, probs, costs, t0, extra={"best_f": float(gfit)})
+        return BaseAlgo._wrap_result(self.name, g.astype(int), D, probs, costs, t0, extra={
+            "best_fitness": gfit,
+        })
