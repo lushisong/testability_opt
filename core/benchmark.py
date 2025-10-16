@@ -12,12 +12,14 @@ from core.algos.greedy import GreedyAlgo
 from core.algos.firefly import FireflyAlgo
 from core.algos.pso import BinaryPSOAlgo
 from core.algos.nn_guided import NNGuidedAlgo
+from core.algos.neural_mip import NeuralMIPAlgo
 
 ALGO_REGISTRY = {
     "Greedy": GreedyAlgo(),
     "Firefly": FireflyAlgo(),
     "BinaryPSO": BinaryPSOAlgo(),
     "NN-Guided": NNGuidedAlgo(),
+    "NeuralMIP": NeuralMIPAlgo(),
 }
 
 def run_benchmark(D, probs, costs, tau_d, tau_i, algos: List[str],

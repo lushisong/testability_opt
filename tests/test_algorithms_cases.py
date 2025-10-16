@@ -94,6 +94,14 @@ ALGO_TEST_KWARGS = {
     "Firefly": {"pop_size": 6, "max_iter": 10},
     "BinaryPSO": {"pop_size": 6, "max_iter": 10},
     "NN-Guided": {"synth_samples": 40, "epochs": 10, "hidden": 8},
+    "NeuralMIP": {
+        "train_instances": 3,
+        "teacher_time_limit": 0.4,
+        "epochs": 60,
+        "hidden": 16,
+        "solver_time_limit": 0.6,
+        "hint_threshold": 0.5,
+    },
 }
 
 
