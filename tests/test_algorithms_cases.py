@@ -94,6 +94,9 @@ ALGO_TEST_KWARGS = {
     "Firefly": {"pop_size": 6, "max_iter": 10},
     "BinaryPSO": {"pop_size": 6, "max_iter": 10},
     "NN-Guided": {"synth_samples": 40, "epochs": 10, "hidden": 8},
+    "NN-MIP": {"time_limit_s": 1.0, "epochs": 60, "hidden": 16, "hint_th": 0.5},
+    "NN-Guided_Offline": {},
+    "NN-MIP_Offline": {"time_limit_s": 1.0},
 }
 
 
@@ -110,6 +113,12 @@ def test_algorithms_handle_defined_cases(case, algo_name):
     tau_i = case["tau_i"]
 
     extra_kwargs = ALGO_TEST_KWARGS.get(algo_name, {})
+    # 若 NN-MIP 系列但未安装 ortools，则跳过
+    if algo_name in ("NN-MIP", "NN-MIP_Offline"):
+        try:
+            import ortools.sat.python.cp_model  # noqa: F401
+        except Exception:
+            pytest.skip("ortools not installed; skip NN-MIP")
     result = algo.run(D, probs, costs, tau_d, tau_i, seed=123, **extra_kwargs)
 
     assert result.selected.shape == (D.shape[1],)

@@ -12,22 +12,32 @@ from core.algos.greedy import GreedyAlgo
 from core.algos.firefly import FireflyAlgo
 from core.algos.pso import BinaryPSOAlgo
 from core.algos.nn_guided import NNGuidedAlgo
+from core.algos.nn_guided_offline import NNGuidedOfflineAlgo
+from core.algos.nn_mip import NNHintMIPAlgo
+from core.algos.nn_mip_offline import NNHintMIPOfflineAlgo
 
 ALGO_REGISTRY = {
     "Greedy": GreedyAlgo(),
     "Firefly": FireflyAlgo(),
     "BinaryPSO": BinaryPSOAlgo(),
     "NN-Guided": NNGuidedAlgo(),
+    "NN-MIP": NNHintMIPAlgo(),
+    "NN-Guided_Offline": NNGuidedOfflineAlgo(),
+    "NN-MIP_Offline": NNHintMIPOfflineAlgo(),
 }
 
 def run_benchmark(D, probs, costs, tau_d, tau_i, algos: List[str],
-                  repeats: int = 10, base_seed: int = 42) -> List[Dict[str, Any]]:
+                  repeats: int = 10, base_seed: int = 42,
+                  budget: float | None = None) -> List[Dict[str, Any]]:
     results = []
     for r in range(repeats):
         for name in algos:
             algo = ALGO_REGISTRY[name]
             t0 = time.perf_counter()
-            res = algo.run(D, probs, costs, tau_d, tau_i, seed=base_seed + r)
+            try:
+                res = algo.run(D, probs, costs, tau_d, tau_i, seed=base_seed + r, budget=budget)
+            except TypeError:
+                res = algo.run(D, probs, costs, tau_d, tau_i, seed=base_seed + r)
             results.append({
                 "algo": name,
                 "repeat": r,

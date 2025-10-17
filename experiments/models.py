@@ -43,3 +43,18 @@ class TinyMLP:
     def predict(self, X):
         return self.forward(X).reshape(-1)
 
+
+def save_tinymlp(path: str, net: TinyMLP, mu, sd):
+    import numpy as np
+    np.savez(path, W1=net.W1, b1=net.b1, W2=net.W2, b2=net.b2, mu=mu, sd=sd)
+
+
+def load_tinymlp(path: str) -> tuple[TinyMLP, any, any]:
+    import numpy as np
+    data = np.load(path, allow_pickle=False)
+    W1, b1, W2, b2 = data["W1"], data["b1"], data["W2"], data["b2"]
+    mu, sd = data["mu"], data["sd"]
+    net = TinyMLP(in_dim=W1.shape[0], hidden=W1.shape[1])
+    net.W1 = W1; net.b1 = b1; net.W2 = W2; net.b2 = b2
+    return net, mu, sd
+

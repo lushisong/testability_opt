@@ -66,11 +66,13 @@ class BinaryMetricHelper:
         costs = pop_arr.astype(float) @ self.costs
         return fdr_vals, fir_vals, costs
 
-    def penalized_objective(self, pop: np.ndarray, tau_d: float, tau_i: float, penalty: float) -> np.ndarray:
+    def penalized_objective(self, pop: np.ndarray, tau_d: float, tau_i: float, penalty: float,
+                             budget: float | None = None) -> np.ndarray:
         fdr_vals, fir_vals, costs = self.evaluate_population(pop)
         gd = np.maximum(0.0, tau_d - fdr_vals)
         gi = np.maximum(0.0, tau_i - fir_vals)
-        return costs + penalty * (gd + gi)
+        gb = np.maximum(0.0, costs - float(budget)) if budget is not None else 0.0
+        return costs + penalty * (gd + gi + gb)
 
     def evaluate_mask(self, mask: np.ndarray) -> Tuple[float, float, float]:
         fdr_vals, fir_vals, costs = self.evaluate_population(mask)

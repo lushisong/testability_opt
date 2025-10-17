@@ -9,6 +9,7 @@ sys.path.append(BASE_DIR)
 from widgets.dataset_widget import DatasetWidget
 from widgets.algos_widget import AlgosWidget
 from widgets.benchmark_widget import BenchmarkWidget
+from widgets.offline_train_widget import OfflineTrainWidget
 
 def ensure_runtime_dirs():
     for d in ("data", "results"):
@@ -16,9 +17,8 @@ def ensure_runtime_dirs():
         if not os.path.exists(p):
             os.makedirs(p, exist_ok=True)
 
-def main():
+def build_mainwindow() -> QtWidgets.QMainWindow:
     ensure_runtime_dirs()
-    app = QtWidgets.QApplication(sys.argv)
     ui_path = os.path.join(BASE_DIR, "ui", "main_window.ui")
     MainWindow = uic.loadUi(ui_path)
 
@@ -26,6 +26,7 @@ def main():
     tab_dataset = MainWindow.findChild(QtWidgets.QWidget, "tabDataset")
     tab_algos   = MainWindow.findChild(QtWidgets.QWidget, "tabAlgorithms")
     tab_bench   = MainWindow.findChild(QtWidgets.QWidget, "tabBenchmark")
+    tab_widget  = MainWindow.findChild(QtWidgets.QTabWidget, "tabWidget")
 
     layout_dataset = tab_dataset.layout()  # 对应 ui 中的 layoutDataset
     layout_algos   = tab_algos.layout()    # 对应 ui 中的 layoutAlgos
@@ -44,6 +45,21 @@ def main():
     layout_bench.setContentsMargins(6, 6, 6, 6)
     layout_bench.addWidget(bench_widget)
 
+    # 动态添加“离线训练”页
+    offline_tab = QtWidgets.QWidget()
+    offline_layout = QtWidgets.QVBoxLayout(offline_tab)
+    offline_layout.setContentsMargins(6, 6, 6, 6)
+    offline_widget = OfflineTrainWidget(parent=offline_tab, dataset_provider=dataset_widget.get_dataset_ref)
+    offline_layout.addWidget(offline_widget)
+    if tab_widget is not None:
+        tab_widget.addTab(offline_tab, "离线训练")
+
+    return MainWindow
+
+
+def main():
+    app = QtWidgets.QApplication(sys.argv)
+    MainWindow = build_mainwindow()
     MainWindow.show()
     sys.exit(app.exec_())
 

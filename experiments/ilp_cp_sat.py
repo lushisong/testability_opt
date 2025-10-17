@@ -20,7 +20,10 @@ def solve_tp_mip_cp_sat(D: np.ndarray, probs: np.ndarray, costs: np.ndarray,
                         tau_d: float, tau_i: float,
                         time_limit_s: float = 10.0,
                         x_hint: Optional[np.ndarray] = None,
-                        log: bool = False) -> Dict[str, Any]:
+                        log: bool = False,
+                        budget: Optional[float] = None,
+                        num_workers: int = 8,
+                        use_callback: bool = True) -> Dict[str, Any]:
     """
     MILP 等价CP-SAT建模:
       x_j ∈ {0,1} 选择测试
@@ -75,6 +78,9 @@ def solve_tp_mip_cp_sat(D: np.ndarray, probs: np.ndarray, costs: np.ndarray,
     # Objective
     c_scale = 1_000
     c_int = [int(round(float(costs[j]) * c_scale)) for j in range(n)]
+    # 预算约束（可选）
+    if budget is not None:
+        model.Add(sum(c_int[j] * x[j] for j in range(n)) <= int(round(float(budget) * c_scale)))
     model.Minimize(sum(c_int[j] * x[j] for j in range(n)))
 
     # Hints (Neural Diving)
@@ -87,11 +93,18 @@ def solve_tp_mip_cp_sat(D: np.ndarray, probs: np.ndarray, costs: np.ndarray,
     solver = cp_model.CpSolver()
     if time_limit_s is not None and time_limit_s > 0:
         solver.parameters.max_time_in_seconds = float(time_limit_s)
-    solver.parameters.num_search_workers = 8
+    solver.parameters.num_search_workers = int(max(1, num_workers))
     solver.parameters.log_search_progress = log
 
-    cb = AnytimeRecorder(obj_sign=1)
-    status = solver.SolveWithSolutionCallback(model, cb)
+    traj: List[Tuple[float, float]] = []
+    if use_callback:
+        cb = AnytimeRecorder(obj_sign=1)
+        status = solver.SolveWithSolutionCallback(model, cb)
+        traj = cb.traj
+    else:
+        t0 = time.perf_counter()
+        status = solver.Solve(model)
+        traj = [(time.perf_counter() - t0, solver.ObjectiveValue())]
 
     selected = np.array([int(solver.BooleanValue(x[j])) for j in range(n)], dtype=int)
     obj = sum(costs[j] * selected[j] for j in range(n))
@@ -101,7 +114,7 @@ def solve_tp_mip_cp_sat(D: np.ndarray, probs: np.ndarray, costs: np.ndarray,
         "status": int(status),
         "selected": selected,
         "objective_cost": float(obj),
-        "anytime_traj": cb.traj,
+        "anytime_traj": traj,
         "feasible": feasible,
     }
 

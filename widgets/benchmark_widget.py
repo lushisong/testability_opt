@@ -19,6 +19,12 @@ class BenchmarkWidget(QtWidgets.QWidget):
         self.chk_pso.setChecked(True)
         self.chk_nn = QtWidgets.QCheckBox("NN-Guided")
         self.chk_nn.setChecked(True)
+        self.chk_nnmip = QtWidgets.QCheckBox("NN-MIP")
+        self.chk_nnmip.setChecked(False)
+        self.chk_nn_off = QtWidgets.QCheckBox("NN-Guided_Offline")
+        self.chk_nn_off.setChecked(False)
+        self.chk_nnmip_off = QtWidgets.QCheckBox("NN-MIP_Offline")
+        self.chk_nnmip_off.setChecked(False)
 
         self.spin_repeats = QtWidgets.QSpinBox()
         self.spin_repeats.setRange(1, 100)
@@ -32,6 +38,11 @@ class BenchmarkWidget(QtWidgets.QWidget):
         self.spin_tau_i.setRange(0.0, 1.0)
         self.spin_tau_i.setSingleStep(0.01)
         self.spin_tau_i.setValue(0.8)
+        self.spin_budget = QtWidgets.QDoubleSpinBox()
+        self.spin_budget.setRange(0.0, 1e9)
+        self.spin_budget.setDecimals(3)
+        self.spin_budget.setSingleStep(1.0)
+        self.spin_budget.setValue(0.0)
 
         self.btn_run = QtWidgets.QPushButton("运行 Benchmark")
         self.lbl_csv = QtWidgets.QLabel("结果 CSV：尚未生成")
@@ -46,10 +57,14 @@ class BenchmarkWidget(QtWidgets.QWidget):
         algo_row.addWidget(self.chk_firefly)
         algo_row.addWidget(self.chk_pso)
         algo_row.addWidget(self.chk_nn)
+        algo_row.addWidget(self.chk_nnmip)
+        algo_row.addWidget(self.chk_nn_off)
+        algo_row.addWidget(self.chk_nnmip_off)
         form.addRow("选择算法：", algo_row)
         form.addRow("重复次数：", self.spin_repeats)
         form.addRow("FDR 阈值 τ_d：", self.spin_tau_d)
         form.addRow("FIR 阈值 τ_i：", self.spin_tau_i)
+        form.addRow("总成本上限(0=不限)：", self.spin_budget)
         form.addRow(self.btn_run)
         form.addRow(self.lbl_csv)
 
@@ -70,6 +85,9 @@ class BenchmarkWidget(QtWidgets.QWidget):
         if self.chk_firefly.isChecked(): algos.append("Firefly")
         if self.chk_pso.isChecked(): algos.append("BinaryPSO")
         if self.chk_nn.isChecked(): algos.append("NN-Guided")
+        if self.chk_nnmip.isChecked(): algos.append("NN-MIP")
+        if self.chk_nn_off.isChecked(): algos.append("NN-Guided_Offline")
+        if self.chk_nnmip_off.isChecked(): algos.append("NN-MIP_Offline")
         if not algos:
             QtWidgets.QMessageBox.information(self, "提示", "请至少选择一种算法。")
             return
@@ -78,7 +96,10 @@ class BenchmarkWidget(QtWidgets.QWidget):
         tau_d = float(self.spin_tau_d.value())
         tau_i = float(self.spin_tau_i.value())
 
-        results = run_benchmark(ds.D, ds.fault_probs, ds.test_costs, tau_d, tau_i, algos, repeats=repeats, base_seed=123)
+        budget = float(self.spin_budget.value())
+        if budget <= 0.0:
+            budget = None
+        results = run_benchmark(ds.D, ds.fault_probs, ds.test_costs, tau_d, tau_i, algos, repeats=repeats, base_seed=123, budget=budget)
         out = summarize_and_plot(results, out_dir=os.path.join(os.getcwd(), "results"))
         self.lbl_csv.setText(f"结果 CSV：{out['csv']}")
 

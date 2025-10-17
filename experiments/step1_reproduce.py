@@ -23,7 +23,7 @@ def main():
 
     ensure_dir(args.out)
     rows = []
-    algos = ["Firefly", "BinaryPSO", "Greedy", "NN-Guided"]
+    algos = ["Firefly", "BinaryPSO", "Greedy", "NN-Guided", "NN-MIP"]
 
     for rep in range(args.repeats):
         ds = random_dataset(args.m, args.n, density=args.density, seed=args.seed + rep)
