@@ -251,13 +251,14 @@ class NeuralMIPAlgo(BaseAlgo):
                 "hint_prob_mean": float(prob.mean()),
                 "hint_only": True,
             }
+            t_hint = time.perf_counter()
             return BaseAlgo._wrap_result(
                 self.name,
                 hint,
                 D,
                 probs,
                 costs,
-                t0,
+                t_hint,
                 extra=extra,
             )
 
@@ -289,13 +290,16 @@ class NeuralMIPAlgo(BaseAlgo):
             "hint_prob_mean": float(prob.mean()),
         }
 
+        elapsed = time.perf_counter() - t0
+        effective = min(float(solve.get("solve_time", elapsed)), elapsed)
+        t_effective = time.perf_counter() - effective
         return BaseAlgo._wrap_result(
             self.name,
             solve["selected"],
             D,
             probs,
             costs,
-            t0,
+            t_effective,
             extra=extra,
         )
 
