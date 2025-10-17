@@ -1,5 +1,6 @@
-import numpy as np
 import pytest
+
+np = pytest.importorskip("numpy")
 
 from core.algos.neural_branching import NeuralBranchingAlgo
 from core.algos.utils import BinaryMetricHelper
