@@ -205,3 +205,13 @@ class SelectionTracker:
 
     def selected_mask(self) -> np.ndarray:
         return self.selected.copy()
+
+
+def test_adjacency_matrix(D: np.ndarray) -> np.ndarray:
+    """Construct an adjacency matrix linking tests with shared fault coverage."""
+
+    D_bool = (np.asarray(D, dtype=np.uint8) > 0).astype(np.uint8)
+    adj = D_bool.T @ D_bool
+    adj = (adj > 0).astype(float)
+    np.fill_diagonal(adj, 0.0)
+    return adj

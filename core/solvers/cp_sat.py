@@ -1,11 +1,60 @@
 # -*- coding: utf-8 -*-
 """CP-SAT formulation for the testability optimization MIP."""
 
-from typing import Dict, Any, Optional, Tuple, List
+from dataclasses import dataclass
+from typing import Dict, Any, Optional, Tuple, List, Sequence, Union
 
 import time
 import numpy as np
 from ortools.sat.python import cp_model
+
+
+@dataclass
+class BranchingStrategy:
+    """Lightweight wrapper around CP-SAT decision strategies.
+
+    Parameters
+    ----------
+    order : Sequence[int]
+        Desired ordering for the Boolean decision variables. Elements refer to
+        the index in the solver's ``x`` vector. Missing indices will be
+        appended in their natural order.
+    var_strategy : Union[int, str]
+        Variable selection strategy from ``cp_model.DecisionStrategyProto``.
+        Either an enum value or the corresponding string name, e.g.
+        ``"CHOOSE_FIRST"``.
+    domain_strategy : Union[int, str]
+        Domain reduction strategy from ``cp_model.DecisionStrategyProto``.
+    """
+
+    order: Sequence[int]
+    var_strategy: Union[int, str] = cp_model.CHOOSE_FIRST
+    domain_strategy: Union[int, str] = cp_model.SELECT_MIN_VALUE
+
+    def normalize(self, num_vars: int) -> Tuple[List[int], int, int]:
+        seen = set()
+        ordered: List[int] = []
+        for idx in self.order:
+            if 0 <= int(idx) < num_vars and int(idx) not in seen:
+                ordered.append(int(idx))
+                seen.add(int(idx))
+        for idx in range(num_vars):
+            if idx not in seen:
+                ordered.append(idx)
+        vs = self._resolve_strategy(self.var_strategy, cp_model.CHOOSE_FIRST)
+        ds = self._resolve_strategy(self.domain_strategy, cp_model.SELECT_MIN_VALUE)
+        return ordered, vs, ds
+
+    @staticmethod
+    def _resolve_strategy(value: Union[int, str], default: int) -> int:
+        if isinstance(value, str):
+            name = value.upper()
+            if not name.startswith("SELECT") and not name.startswith("CHOOSE"):
+                name = name.replace("-", "_")
+            if not hasattr(cp_model, name):
+                raise ValueError(f"Unknown decision strategy '{value}'")
+            return int(getattr(cp_model, name))
+        return int(value) if value is not None else int(default)
 
 
 class AnytimeRecorder(cp_model.CpSolverSolutionCallback):
@@ -33,6 +82,7 @@ def solve_tp_mip_cp_sat(
     x_hint: Optional[np.ndarray] = None,
     log: bool = False,
     num_workers: int = 8,
+    branching: Optional[BranchingStrategy] = None,
 ) -> Dict[str, Any]:
     """Solve the test point selection MIP using Google OR-Tools CP-SAT.
 
@@ -114,6 +164,14 @@ def solve_tp_mip_cp_sat(
             if val in (0, 1):
                 model.AddHint(x[j], val)
 
+    if branching is not None:
+        ordered, var_strategy, domain_strategy = branching.normalize(n)
+        model.AddDecisionStrategy(
+            [x[idx] for idx in ordered],
+            var_strategy,
+            domain_strategy,
+        )
+
     solver = cp_model.CpSolver()
     if time_limit_s is not None and time_limit_s > 0:
         solver.parameters.max_time_in_seconds = float(time_limit_s)
@@ -129,7 +187,7 @@ def solve_tp_mip_cp_sat(
     obj = sum(float(costs[j]) * selected[j] for j in range(n))
     feasible = status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
 
-    return {
+    result = {
         "status": int(status),
         "selected": selected,
         "objective_cost": float(obj),
@@ -137,4 +195,11 @@ def solve_tp_mip_cp_sat(
         "feasible": feasible,
         "solve_time": float(solve_time),
     }
+    if branching is not None:
+        result["branching_strategy"] = {
+            "order": ordered,
+            "var_strategy": int(var_strategy),
+            "domain_strategy": int(domain_strategy),
+        }
+    return result
 
