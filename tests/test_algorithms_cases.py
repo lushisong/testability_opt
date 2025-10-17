@@ -9,7 +9,7 @@ if str(REPO_ROOT) not in sys.path:
 
 np = pytest.importorskip("numpy")
 
-from core.benchmark import ALGO_REGISTRY
+from core.benchmark import ALGO_REGISTRY, create_algo
 from core.metrics import fdr as compute_fdr, fir as compute_fir, cost as compute_cost
 
 
@@ -103,8 +103,11 @@ ALGO_TEST_KWARGS = {
 @pytest.mark.parametrize("case", TEST_CASES, ids=lambda c: c["name"])
 @pytest.mark.parametrize("algo_name", sorted(ALGO_REGISTRY.keys()))
 def test_algorithms_handle_defined_cases(case, algo_name):
-    algo_proto = ALGO_REGISTRY[algo_name]
-    algo = algo_proto.__class__()
+    algo_factory = ALGO_REGISTRY[algo_name]
+    if isinstance(algo_factory, type):
+        algo = algo_factory()
+    else:
+        algo = create_algo(algo_name)
 
     D = case["D"]
     probs = case["probs"]

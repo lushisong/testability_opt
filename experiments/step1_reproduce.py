@@ -6,7 +6,7 @@
 """
 import os, argparse, numpy as np
 from core.data_io import random_dataset
-from core.benchmark import ALGO_REGISTRY
+from core.benchmark import create_algo
 from experiments.utils import ensure_dir, save_json, performance_profile_relative_cost, tabulate_mean_std
 
 def main():
@@ -28,7 +28,7 @@ def main():
     for rep in range(args.repeats):
         ds = random_dataset(args.m, args.n, density=args.density, seed=args.seed + rep)
         for name in algos:
-            algo = ALGO_REGISTRY[name]
+            algo = create_algo(name)
             res = algo.run(ds.D, ds.fault_probs, ds.test_costs, args.tau_d, args.tau_i, seed=args.seed + rep)
             rows.append({
                 "algo": name,
