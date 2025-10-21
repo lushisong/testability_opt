@@ -4,6 +4,7 @@ import time
 import numpy as np
 
 from core.algos.base import BaseAlgo
+from core.algos.utils import structure_distance, structure_profile
 from experiments.features import per_test_features
 from experiments.models import load_tinymlp
 
@@ -14,18 +15,68 @@ class NNHintMIPOfflineAlgo(BaseAlgo):
     def run(self, D, probs, costs, tau_d, tau_i, seed=None,
             model_path: str = os.path.join("data", "models", "nn_mip_offline.npz"),
             time_limit_s: float = 5.0, hint_th: float = 0.5,
-            budget: float | None = None, num_workers: int = 1, use_callback: bool = False) -> "AlgoResult":
+            budget: float | None = None, num_workers: int = 1, use_callback: bool = False,
+            structure_tolerance: float = 0.1) -> "AlgoResult":
         t0 = time.perf_counter()
-        m, n = D.shape
+        _, n = D.shape
+        profile = structure_profile(D)
+        profile_distance = float("inf")
         if not os.path.exists(model_path):
             # 回退到在线版本
             from core.algos.nn_mip import NNHintMIPAlgo
             res = NNHintMIPAlgo().run(D, probs, costs, tau_d, tau_i, seed=seed,
                                       time_limit_s=time_limit_s, hint_th=hint_th,
-                                      budget=budget, num_workers=num_workers, use_callback=use_callback)
-            return BaseAlgo._wrap_result(self.name, res.selected, D, probs, costs, t0, extra={"fallback": True})
+                                      budget=budget, num_workers=num_workers, use_callback=use_callback,
+                                      structure_tolerance=structure_tolerance)
+            return BaseAlgo._wrap_result(
+                self.name,
+                res.selected,
+                D,
+                probs,
+                costs,
+                t0,
+                extra={
+                    "fallback": True,
+                    "profile_distance": profile_distance,
+                    "structure_tolerance": float(structure_tolerance),
+                    "model_path": model_path,
+                },
+            )
 
-        net, mu, sd = load_tinymlp(model_path)
+        net, mu, sd, meta = load_tinymlp(model_path)
+        saved_profile = meta.get("profile")
+        if saved_profile is not None:
+            profile_distance = structure_distance(saved_profile, profile)
+        if saved_profile is None or profile_distance > structure_tolerance:
+            from core.algos.nn_mip import NNHintMIPAlgo
+            res = NNHintMIPAlgo().run(
+                D,
+                probs,
+                costs,
+                tau_d,
+                tau_i,
+                seed=seed,
+                time_limit_s=time_limit_s,
+                hint_th=hint_th,
+                budget=budget,
+                num_workers=num_workers,
+                use_callback=use_callback,
+                structure_tolerance=structure_tolerance,
+            )
+            return BaseAlgo._wrap_result(
+                self.name,
+                res.selected,
+                D,
+                probs,
+                costs,
+                t0,
+                extra={
+                    "fallback": True,
+                    "profile_distance": profile_distance,
+                    "structure_tolerance": float(structure_tolerance),
+                    "model_path": model_path,
+                },
+            )
 
         ctx = np.zeros(n, dtype=int)
         feats = per_test_features(D, probs, costs, ctx)
@@ -49,5 +100,17 @@ class NNHintMIPOfflineAlgo(BaseAlgo):
         selected = sol.get("selected")
         if selected is None:
             selected = np.zeros(n, dtype=int)
-        return BaseAlgo._wrap_result(self.name, selected, D, probs, costs, t0, extra={"fallback": False})
-
+        return BaseAlgo._wrap_result(
+            self.name,
+            selected,
+            D,
+            probs,
+            costs,
+            t0,
+            extra={
+                "fallback": False,
+                "profile_distance": float(profile_distance if np.isfinite(profile_distance) else 0.0),
+                "structure_tolerance": float(structure_tolerance),
+                "model_path": model_path,
+            },
+        )

@@ -2,8 +2,9 @@
 """Utility helpers shared by the optimization algorithms."""
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
-from typing import Tuple
+from typing import Dict, Tuple
 
 import numpy as np
 
@@ -13,6 +14,53 @@ class _PairwiseData:
     diff_matrix: np.ndarray  # shape (n, pair_count), uint8
     pair_weights: np.ndarray  # shape (pair_count,)
     total_weight: float
+
+
+def structure_profile(D: np.ndarray, sample: int = 16) -> Dict[str, object]:
+    """Generate a lightweight structural signature for caching and similarity checks."""
+    D_bin = (np.asarray(D, dtype=np.uint8) > 0).astype(np.uint8)
+    m, n = D_bin.shape
+    nnz = int(D_bin.sum())
+    row_sums = D_bin.sum(axis=1).astype(int)
+    col_sums = D_bin.sum(axis=0).astype(int)
+    top_rows = tuple(np.sort(row_sums)[-min(sample, m):].tolist())
+    top_cols = tuple(np.sort(col_sums)[-min(sample, n):].tolist())
+    return {
+        "shape": (int(m), int(n)),
+        "nnz": nnz,
+        "row_top": top_rows,
+        "col_top": top_cols,
+    }
+
+
+def structure_distance(a: Dict[str, object], b: Dict[str, object]) -> float:
+    """Compute a normalized distance between two structural signatures."""
+    shape_a = tuple(a["shape"])
+    shape_b = tuple(b["shape"])
+    if shape_a != shape_b:
+        return math.inf
+    m, n = shape_a
+    total = max(1, m * n)
+    nnz_a = float(a["nnz"])
+    nnz_b = float(b["nnz"])
+    nnz_gap = abs(nnz_a - nnz_b) / total
+
+    def _l2_gap(key: str) -> float:
+        arr_a = np.array(a[key], dtype=float)
+        arr_b = np.array(b[key], dtype=float)
+        if arr_a.size == 0 and arr_b.size == 0:
+            return 0.0
+        size = max(arr_a.size, arr_b.size)
+        if arr_a.size < size:
+            arr_a = np.pad(arr_a, (size - arr_a.size, 0))
+        if arr_b.size < size:
+            arr_b = np.pad(arr_b, (size - arr_b.size, 0))
+        denom = max(1.0, float(arr_a.sum() + arr_b.sum()))
+        return float(np.linalg.norm(arr_a - arr_b, ord=1)) / denom
+
+    row_gap = _l2_gap("row_top")
+    col_gap = _l2_gap("col_top")
+    return nnz_gap + 0.5 * (row_gap + col_gap)
 
 
 class BinaryMetricHelper:

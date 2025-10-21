@@ -1,12 +1,34 @@
 # -*- coding: utf-8 -*-
 import time
+from dataclasses import dataclass
+from typing import Dict, Optional, Tuple
+
 import numpy as np
 
 from core.algos.base import BaseAlgo
-from core.algos.utils import BinaryMetricHelper
+from core.algos.utils import (
+    BinaryMetricHelper,
+    structure_distance,
+    structure_profile,
+)
 
-# 简单的模型缓存（同一 D 或相近特征分布可复用）
-_MODEL_CACHE = {}
+
+@dataclass
+class CachedNNModel:
+    net: "TinyMLP"
+    mu: np.ndarray
+    sd: np.ndarray
+    profile: Dict[str, object]
+    train_time: float
+    samples: int
+    epochs: int
+    created_at: float
+    reuse_count: int = 0
+
+
+_MODEL_CACHE: list[CachedNNModel] = []
+_CACHE_STATS = {"queries": 0, "hits": 0}
+_CACHE_CAPACITY = 8
 
 
 class TinyMLP:
@@ -54,24 +76,71 @@ class TinyMLP:
         return self.forward(X).reshape(-1)
 
 
+def _locate_cached_model(profile: Dict[str, object], tol: float) -> Tuple[Optional[CachedNNModel], float]:
+    best_entry: Optional[CachedNNModel] = None
+    best_dist = float("inf")
+    for entry in _MODEL_CACHE:
+        if entry.profile["shape"] != profile["shape"]:
+            continue
+        dist = structure_distance(entry.profile, profile)
+        if dist < best_dist:
+            best_entry = entry
+            best_dist = dist
+    if best_entry is None or best_dist > tol:
+        return None, best_dist
+    return best_entry, best_dist
+
+
+def _store_cached_model(entry: CachedNNModel) -> None:
+    _MODEL_CACHE.append(entry)
+    if len(_MODEL_CACHE) > _CACHE_CAPACITY:
+        _MODEL_CACHE.sort(key=lambda item: (item.reuse_count, item.created_at))
+        _MODEL_CACHE.pop(0)
+
+
 class NNGuidedAlgo(BaseAlgo):
     name = "NN-Guided"
 
     def run(self, D, probs, costs, tau_d, tau_i, seed=None,
             synth_samples=150, epochs=200, hidden=16, w_fdr=0.5, w_fir=0.5,
-            budget: float | None = None, use_cache: bool = True) -> "AlgoResult":
+            budget: float | None = None, use_cache: bool = True,
+            structure_tolerance: float = 0.05) -> "AlgoResult":
         t0 = time.perf_counter()
         rng = np.random.default_rng(seed)
         helper = BinaryMetricHelper(D, probs, costs)
         n = helper.n
+        profile = structure_profile(D)
 
-        # 训练或复用缓存的模型
-        key = (n, m_hash(D))
         cached = False
-        if use_cache and key in _MODEL_CACHE:
-            net, scaler_mean, scaler_std = _MODEL_CACHE[key]
-            cached = True
+        cache_distance = float("inf")
+        train_time_run = 0.0
+        train_samples = 0
+        reuse_count = 0
+        net: TinyMLP
+        scaler_mean: np.ndarray
+        scaler_std: np.ndarray
+
+        _CACHE_STATS["queries"] += 1
+        if use_cache:
+            entry, cache_distance = _locate_cached_model(profile, structure_tolerance)
+            if entry is not None:
+                cached = True
+                _CACHE_STATS["hits"] += 1
+                entry.reuse_count += 1
+                reuse_count = entry.reuse_count
+                net = entry.net
+                scaler_mean = entry.mu
+                scaler_std = entry.sd
+            else:
+                net = None  # type: ignore[assignment]
+                scaler_mean = np.zeros((1, 0))
+                scaler_std = np.ones((1, 0))
         else:
+            net = None  # type: ignore[assignment]
+            scaler_mean = np.zeros((1, 0))
+            scaler_std = np.ones((1, 0))
+
+        if not cached:
             X_list = []
             y_list = []
             tracker = helper.new_tracker()
@@ -100,9 +169,26 @@ class NNGuidedAlgo(BaseAlgo):
             Xn = (X - scaler_mean) / scaler_std
 
             net = TinyMLP(in_dim=X.shape[1], hidden=hidden, lr=1e-2, seed=seed)
+            t_train = time.perf_counter()
             net.fit_mse(Xn, y, epochs=epochs, batch=64)
+            train_time_run = time.perf_counter() - t_train
+            train_samples = int(X.shape[0])
             if use_cache:
-                _MODEL_CACHE[key] = (net, scaler_mean, scaler_std)
+                entry = CachedNNModel(
+                    net=net,
+                    mu=scaler_mean,
+                    sd=scaler_std,
+                    profile=profile,
+                    train_time=train_time_run,
+                    samples=train_samples,
+                    epochs=int(epochs),
+                    created_at=time.time(),
+                )
+                _store_cached_model(entry)
+                reuse_count = entry.reuse_count
+        else:
+            train_time_run = 0.0
+            train_samples = 0
 
         tracker = helper.new_tracker()
         while True:
@@ -114,14 +200,12 @@ class NNGuidedAlgo(BaseAlgo):
             feats_norm = (feats_now - scaler_mean) / scaler_std
             scores = net.predict(feats_norm)
             scores[tracker.selected == 1] = -1e12
-            # 考虑预算的选择策略：从高分到低分尝试可行的列
             candidate_idx = np.argsort(-scores)
             added = False
             for j in candidate_idx:
                 if tracker.selected[j] == 1:
                     continue
                 if scores[j] <= 0 and not added:
-                    # 兜底：选性价比最高的列
                     remaining = np.where(tracker.selected == 0)[0]
                     if remaining.size == 0:
                         break
@@ -137,7 +221,6 @@ class NNGuidedAlgo(BaseAlgo):
                 break
 
         selected = tracker.selected_mask()
-        # 后向清理：保证在预算内，同时不破坏阈值
         if selected.any():
             improved = True
             while improved:
@@ -152,13 +235,16 @@ class NNGuidedAlgo(BaseAlgo):
                         selected = trial
                         improved = True
 
-        return BaseAlgo._wrap_result(self.name, selected, D, probs, costs, t0, extra={
+        cache_hits = _CACHE_STATS["hits"] if use_cache else 0
+        cache_queries = _CACHE_STATS["queries"] if use_cache else 0
+        extra = {
             "cached": bool(cached),
-        })
-
-
-def m_hash(D: np.ndarray) -> int:
-    # 对 D 的稀疏结构做一个快速哈希（仅用于缓存键）
-    D = (np.asarray(D) > 0).astype(np.uint8)
-    # 取部分哈希避免大数组代价
-    return int(hash(D.tobytes()[: min(D.size, 8192)]))
+            "train_time_sec": float(train_time_run),
+            "train_samples": int(train_samples),
+            "profile_distance": float(0.0 if not cached else cache_distance),
+            "structure_tolerance": float(structure_tolerance),
+            "reuse_count": int(reuse_count),
+            "cache_hits": int(cache_hits),
+            "cache_queries": int(cache_queries),
+        }
+        return BaseAlgo._wrap_result(self.name, selected, D, probs, costs, t0, extra=extra)

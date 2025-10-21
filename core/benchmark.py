@@ -219,7 +219,7 @@ def summarize_and_plot(results: List[Dict[str, Any]], out_dir: str):
     dual_gap_data = [[rr["dual_gap"] for rr in results if rr["algo"] == a] for a in algos]
 
     plt.figure()
-    plt.boxplot(cost_data, labels=algos, showmeans=True)
+    plt.boxplot(cost_data, tick_labels=algos, showmeans=True)
     plt.ylabel("Total Cost")
     plt.title("Cost Distribution by Algorithm")
     plt.tight_layout()
@@ -228,7 +228,7 @@ def summarize_and_plot(results: List[Dict[str, Any]], out_dir: str):
     plt.close()
 
     plt.figure()
-    plt.boxplot(time_data, labels=algos, showmeans=True)
+    plt.boxplot(time_data, tick_labels=algos, showmeans=True)
     plt.ylabel("Runtime (s)")
     plt.title("Runtime Distribution by Algorithm")
     plt.tight_layout()

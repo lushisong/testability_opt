@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Dict, Any, Optional, Tuple, List, Sequence, Union
 
 import time
+import warnings
 import numpy as np
 from ortools.sat.python import cp_model
 
@@ -180,7 +181,16 @@ def solve_tp_mip_cp_sat(
 
     cb = AnytimeRecorder(obj_sign=1)
     solve_t0 = time.perf_counter()
-    status = solver.SolveWithSolutionCallback(model, cb)
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message="solve_with_solution_callback is deprecated",
+            category=DeprecationWarning,
+        )
+        try:
+            status = solver.Solve(model, cb)
+        except TypeError:
+            status = solver.SolveWithSolutionCallback(model, cb)
     solve_time = time.perf_counter() - solve_t0
 
     selected = np.array([int(solver.BooleanValue(x[j])) for j in range(n)], dtype=int)
@@ -202,4 +212,3 @@ def solve_tp_mip_cp_sat(
             "domain_strategy": int(domain_strategy),
         }
     return result
-

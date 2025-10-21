@@ -9,7 +9,7 @@ import os
 import numpy as np
 from typing import Tuple
 
-from core.algos.utils import BinaryMetricHelper
+from core.algos.utils import BinaryMetricHelper, structure_profile
 from experiments.features import per_test_features
 from experiments.models import TinyMLP, save_tinymlp
 
@@ -40,8 +40,16 @@ def train_guided_offline(D: np.ndarray, probs: np.ndarray, costs: np.ndarray,
     sd = X.std(axis=0, keepdims=True) + 1e-8
     net = TinyMLP(in_dim=X.shape[1], hidden=hidden, lr=1e-2, seed=seed)
     net.fit_mse((X - mu) / sd, y, epochs=epochs, batch=128)
-    os.makedirs(os.path.dirname(out_path), exist_ok=True)
-    save_tinymlp(out_path, net, mu, sd)
+    out_dir = os.path.dirname(out_path) or "."
+    os.makedirs(out_dir, exist_ok=True)
+    profile = structure_profile(D)
+    save_tinymlp(out_path, net, mu, sd, meta={
+        "algo": "nn_guided_offline",
+        "profile": profile,
+        "seed": int(seed),
+        "synth_samples": int(synth_samples),
+        "epochs": int(epochs),
+    })
     return net, mu, sd
 
 
@@ -57,7 +65,13 @@ def train_mip_offline(D: np.ndarray, probs: np.ndarray, costs: np.ndarray,
     sd = feats.std(axis=0, keepdims=True) + 1e-8
     net = TinyMLP(in_dim=feats.shape[1], hidden=hidden, lr=1e-2, seed=seed)
     net.fit_mse((feats - mu) / sd, y, epochs=epochs, batch=128)
-    os.makedirs(os.path.dirname(out_path), exist_ok=True)
-    save_tinymlp(out_path, net, mu, sd)
+    out_dir = os.path.dirname(out_path) or "."
+    os.makedirs(out_dir, exist_ok=True)
+    profile = structure_profile(D)
+    save_tinymlp(out_path, net, mu, sd, meta={
+        "algo": "nn_mip_offline",
+        "profile": profile,
+        "seed": int(seed),
+        "epochs": int(epochs),
+    })
     return net, mu, sd
-

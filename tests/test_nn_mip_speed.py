@@ -12,12 +12,11 @@ np = pytest.importorskip("numpy")
 cp_model_mod = pytest.importorskip("ortools.sat.python.cp_model")
 
 from core.data_io import random_dataset
-from core.benchmark import ALGO_REGISTRY
+from core.benchmark import create_algo
 
 
 def _run_once(algo_name: str, ds, tau_d: float, tau_i: float, kwargs=None):
-    algo_proto = ALGO_REGISTRY[algo_name]
-    algo = algo_proto.__class__()
+    algo = create_algo(algo_name)
     kwargs = kwargs or {}
     t0 = time.perf_counter()
     res = algo.run(ds.D, ds.fault_probs, ds.test_costs, tau_d, tau_i, seed=2025, **kwargs)

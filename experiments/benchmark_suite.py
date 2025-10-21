@@ -13,7 +13,7 @@ import argparse
 import json
 import os
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Any, Iterable, List, Tuple
 
@@ -204,7 +204,7 @@ def run_suite(
 
     root = _ensure_dir(Path(output_dir))
     run_name = config.get("name", "benchmark")
-    timestamp = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     run_dir = _ensure_dir(root / f"{run_name}_{timestamp}")
     configs_dir = _ensure_dir(run_dir / "configs")
     archive_dir = _ensure_dir(run_dir / "archive")

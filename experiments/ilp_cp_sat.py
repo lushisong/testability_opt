@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from typing import Dict, Any, List, Optional, Tuple
 import time
+import warnings
 import numpy as np
 from ortools.sat.python import cp_model
 
@@ -99,11 +100,26 @@ def solve_tp_mip_cp_sat(D: np.ndarray, probs: np.ndarray, costs: np.ndarray,
     traj: List[Tuple[float, float]] = []
     if use_callback:
         cb = AnytimeRecorder(obj_sign=1)
-        status = solver.SolveWithSolutionCallback(model, cb)
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                message="solve_with_solution_callback is deprecated",
+                category=DeprecationWarning,
+            )
+            try:
+                status = solver.Solve(model, cb)  # Newer OR-Tools API
+            except TypeError:
+                status = solver.SolveWithSolutionCallback(model, cb)
         traj = cb.traj
     else:
         t0 = time.perf_counter()
-        status = solver.Solve(model)
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                message="solve_with_solution_callback is deprecated",
+                category=DeprecationWarning,
+            )
+            status = solver.Solve(model)
         traj = [(time.perf_counter() - t0, solver.ObjectiveValue())]
 
     selected = np.array([int(solver.BooleanValue(x[j])) for j in range(n)], dtype=int)
@@ -117,4 +133,3 @@ def solve_tp_mip_cp_sat(D: np.ndarray, probs: np.ndarray, costs: np.ndarray,
         "anytime_traj": traj,
         "feasible": feasible,
     }
-

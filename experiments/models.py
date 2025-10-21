@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import json
 import numpy as np
 
 try:  # Optional dependency for GNN models
@@ -54,19 +55,32 @@ class TinyMLP:
         return self.forward(X).reshape(-1)
 
 
-def save_tinymlp(path: str, net: TinyMLP, mu, sd):
-    import numpy as np
-    np.savez(path, W1=net.W1, b1=net.b1, W2=net.W2, b2=net.b2, mu=mu, sd=sd)
+def save_tinymlp(path: str, net: TinyMLP, mu, sd, meta: dict | None = None):
+    payload = {
+        "W1": net.W1,
+        "b1": net.b1,
+        "W2": net.W2,
+        "b2": net.b2,
+        "mu": mu,
+        "sd": sd,
+    }
+    if meta is not None:
+        payload["meta_json"] = np.array(json.dumps(meta), dtype=np.str_)
+    np.savez(path, **payload)
 
 
-def load_tinymlp(path: str) -> tuple[TinyMLP, any, any]:
-    import numpy as np
+def load_tinymlp(path: str) -> tuple[TinyMLP, any, any, dict]:
     data = np.load(path, allow_pickle=False)
     W1, b1, W2, b2 = data["W1"], data["b1"], data["W2"], data["b2"]
     mu, sd = data["mu"], data["sd"]
     net = TinyMLP(in_dim=W1.shape[0], hidden=W1.shape[1])
     net.W1 = W1; net.b1 = b1; net.W2 = W2; net.b2 = b2
-    return net, mu, sd
+    meta_raw = data.get("meta_json", None)
+    if meta_raw is None:
+        meta = {}
+    else:
+        meta = json.loads(str(meta_raw))
+    return net, mu, sd, meta
 
 
 if torch is not None:
@@ -159,4 +173,3 @@ else:  # torch not available
 
     def load_branching_gcn(*_, **__):  # pragma: no cover - requires torch
         raise RuntimeError("PyTorch is required to load BranchingGCN") from _TORCH_IMPORT_ERROR
-
